@@ -1958,3 +1958,5 @@ menu "LVGL configuration"
 	endmenu
 
 endmenu
+
+endif

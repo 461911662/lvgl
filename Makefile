@@ -24,8 +24,9 @@ include $(APPDIR)/Make.defs
 
 LVGL_DIR = .
 LVGL_DIR_NAME = lvgl
+LVGL_PATH ?= ${shell pwd}
 
--include ./lvgl/lvgl.mk
+-include $(LVGL_DIR)/lvgl.mk
 
 ifneq ($(CONFIG_LV_ASSERT_HANDLER_INCLUDE), "")
 CFLAGS += "-DLV_ASSERT_HANDLER=ASSERT(0);"
@@ -50,45 +51,31 @@ CFLAGS   += $(subst ",, $(CONFIG_LV_OPTLEVEL))
 CXXFLAGS += $(subst ",, $(CONFIG_LV_OPTLEVEL))
 endif
 
-# Set up build configuration and environment
-
-WD := ${shell echo $(CURDIR) | sed -e 's/ /\\ /g'}
-
-CONFIG_GRAPH_LVGL_URL ?= "https://github.com/lvgl/lvgl/archive/refs/tags"
-
-LVGL_PATCHS ?= $(sort $(wildcard 000*.patch))
-
-LVGL_VERSION = 9.1.0
-LVGL_TARBALL = v$(LVGL_VERSION).zip
-
-LVGL_UNPACKNAME = lvgl
-UNPACK ?= unzip -o $(if $(V),,-q)
-CURL ?= curl -L -O $(if $(V),,-Ss)
-
-LVGL_UNPACKDIR =  $(WD)/$(LVGL_UNPACKNAME)
-
-$(LVGL_TARBALL):
-	$(ECHO_BEGIN)"Downloading: $(LVGL_TARBALL)"
-	$(Q) $(CURL) $(CONFIG_GRAPH_LVGL_URL)/$(LVGL_TARBALL)
-	$(ECHO_END)
-
-$(LVGL_UNPACKNAME): $(LVGL_TARBALL)
-	$(ECHO_BEGIN)"Unpacking: $(LVGL_TARBALL) -> $(LVGL_UNPACKNAME)"
-	$(Q) $(UNPACK) $(LVGL_TARBALL)
-	$(Q) mv	lvgl-$(LVGL_VERSION) $(LVGL_UNPACKNAME)
-	$(Q) cat $(LVGL_PATCHS) | patch -s -N -d $(LVGL_UNPACKNAME) -p1
-	$(Q) touch $(LVGL_UNPACKNAME)
-	$(ECHO_END)
-
-# Download and unpack tarball if no git repo found
-ifeq ($(wildcard $(LVGL_UNPACKNAME)/.git),)
-context:: $(LVGL_UNPACKNAME)
-endif
+ifneq ($(wildcard $(LVGL_DIR)/.git),)
 
 include $(APPDIR)/Application.mk
 
-ifeq ($(wildcard $(LVGL_UNPACKNAME)/.git),)
+SUOBJS :=
+ifneq ($(EXTRA),)
+$(eval $(call SPLITVARIABLE,OBJS_SPILT,$(SORTOBJS),100))
+$(foreach BATCH, $(OBJS_SPILT_TOTAL), \
+	$(foreach obj, $(OBJS_SPILT_$(BATCH)), \
+		$(foreach EXT, $(EXTRA), \
+			$(eval substitute := $(patsubst %$(SUFFIX)$(OBJEXT),%$(SUFFIX)$(EXT),$(obj))) \
+			$(eval SUOBJS += $(substitute)) \
+		) \
+	) \
+)
+endif
+
+clean::
+	$(eval $(call SPLITVARIABLE,SUOBJS_SPILT,$(SUOBJS),100))
+	$(foreach BATCH, $(SUOBJS_SPILT_TOTAL), \
+		$(foreach obj, $(SUOBJS_SPILT_$(BATCH)), \
+			$(shell rm -rf $(obj)) \
+		) \
+	)
+
 distclean::
-	$(call DELDIR, $(LVGL_UNPACKNAME))
-	$(call DELFILE, $(LVGL_TARBALL))
+
 endif
