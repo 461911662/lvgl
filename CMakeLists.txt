@@ -1,40 +1,135 @@
-cmake_minimum_required(VERSION 3.12.4)
+# ##############################################################################
+# apps/graphics/lvgl/CMakeLists.txt
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more contributor
+# license agreements.  See the NOTICE file distributed with this work for
+# additional information regarding copyright ownership.  The ASF licenses this
+# file to you under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License.  You may obtain a copy of
+# the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# License for the specific language governing permissions and limitations under
+# the License.
+#
+# ##############################################################################
 
-set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+if(CONFIG_GRAPHICS_LVGL)
 
-if(NOT ESP_PLATFORM)
-  if(NOT (CMAKE_C_COMPILER_ID STREQUAL "MSVC"))
-    project(lvgl LANGUAGES C CXX ASM HOMEPAGE_URL https://github.com/lvgl/lvgl)
-  else()
-    project(lvgl LANGUAGES C CXX HOMEPAGE_URL https://github.com/lvgl/lvgl)
+  # ############################################################################
+  # Config and Fetch lvgl
+  # ############################################################################
+  set(LVGL_DIR ${CMAKE_CURRENT_LIST_DIR}/lvgl)
+
+  if(NOT EXISTS ${LVGL_DIR})
+    FetchContent_Declare(
+      lvgl_fetch
+      DOWNLOAD_DIR ${CMAKE_CURRENT_LIST_DIR}
+      URL "https://github.com/lvgl/lvgl/archive/refs/tags/v9.1.0.zip"
+          SOURCE_DIR
+          ${CMAKE_CURRENT_LIST_DIR}/lvgl
+          BINARY_DIR
+          ${CMAKE_BINARY_DIR}/apps/graphics/lvgl/lvgl
+          CONFIGURE_COMMAND
+          ""
+          BUILD_COMMAND
+          ""
+          INSTALL_COMMAND
+          ""
+          TEST_COMMAND
+          ""
+      PATCH_COMMAND
+        patch -p1 -s -d ${CMAKE_CURRENT_LIST_DIR}/lvgl <
+        ${CMAKE_CURRENT_LIST_DIR}/0001-fix-demo-fix-compile-warning.patch
+      DOWNLOAD_NO_PROGRESS true
+      TIMEOUT 30)
+
+    FetchContent_GetProperties(lvgl_fetch)
+
+    if(NOT lvgl_fetch_POPULATED)
+      FetchContent_Populate(lvgl_fetch)
+    endif()
   endif()
-endif()
 
-set(LVGL_ROOT_DIR ${CMAKE_CURRENT_LIST_DIR})
+  # ############################################################################
+  # Flags and Sources
+  # ############################################################################
 
-if(ESP_PLATFORM)
-  include(${CMAKE_CURRENT_LIST_DIR}/env_support/cmake/esp.cmake)
-elseif(ZEPHYR_BASE)
-  include(${CMAKE_CURRENT_LIST_DIR}/env_support/cmake/zephyr.cmake)
-elseif(MICROPY_DIR)
-  include(${CMAKE_CURRENT_LIST_DIR}/env_support/cmake/micropython.cmake)
-else()
-  include(${CMAKE_CURRENT_LIST_DIR}/env_support/cmake/custom.cmake)
-endif()
+  # ############################################################################
+  # Library Configuration
+  # ############################################################################
 
-#[[
-    unfortunately CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS does not work for global data. 
-    for global data we still need decl specs.
-    Check out the docs to learn more about the limitations of CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS
-    https://cmake.org/cmake/help/latest/prop_tgt/WINDOWS_EXPORT_ALL_SYMBOLS.html#prop_tgt:WINDOWS_EXPORT_ALL_SYMBOLS
+  file(
+    GLOB_RECURSE
+    SRCS
+    "${LVGL_DIR}/src/*.S"
+    "${LVGL_DIR}/src/*.c"
+    "${LVGL_DIR}/src/*.cpp"
+    "${LVGL_DIR}/demos/*.c"
+    "${LVGL_DIR}/examples/*.c")
+  nuttx_add_library(lvgl)
 
-    For all compiled sources within the library (i.e. basically all lvgl files) we need to use dllexport.
-    For all compiled sources from outside the library (i.e. files which include lvgl headers) we need to use dllimport.
-    We can do this by using CMakes INTERFACE and PRIVATE keyword.
-  ]]
-if (MSVC)
-  target_compile_definitions(lvgl
-    INTERFACE LV_ATTRIBUTE_EXTERN_DATA=__declspec\(dllimport\)
-    PRIVATE LV_ATTRIBUTE_EXTERN_DATA=__declspec\(dllexport\)
-  )
+  target_sources(lvgl PRIVATE ${SRCS})
+  target_include_directories(lvgl PRIVATE ${LVGL_DIR})
+  target_compile_options(lvgl PRIVATE -Wno-shadow)
+
+  if(NOT CONFIG_LV_ASSERT_HANDLER_INCLUDE STREQUAL "")
+    target_compile_definitions(lvgl PRIVATE "LV_ASSERT_HANDLER=ASSERT(0)\;")
+  endif()
+
+  if(CONFIG_LV_USE_FREETYPE)
+    if(NOT CONFIG_LIB_FREETYPE)
+      message(WARNING "LIB_FREETYPE is not enabled")
+    endif()
+    nuttx_add_dependencies(TARGET lvgl DEPENDS freetype)
+  endif()
+
+  if(CONFIG_LV_USE_LIBPNG)
+    if(NOT CONFIG_LIB_PNG)
+      message(WARNING "LIB_PNG is not enabled")
+    endif()
+    nuttx_add_dependencies(TARGET lvgl DEPENDS png_static)
+  endif()
+
+  if(CONFIG_LV_USE_LIBWEBP)
+    if(NOT CONFIG_LIB_WEBP)
+      message(WARNING "LIB_WEBP is not enabled")
+    endif()
+    nuttx_add_dependencies(TARGET lvgl DEPENDS webpdecoder)
+  endif()
+
+  if(CONFIG_LV_USE_FFMPEG)
+    message(FATAL_ERROR "FFMPEG is not supported yet")
+  endif()
+
+  if(CONFIG_LV_USE_RLOTTIE)
+    message(FATAL_ERROR "RLOTTIE is not supported yet")
+  endif()
+
+  if(CONFIG_LV_USE_LIBJPEG_TURBO)
+    if(NOT CONFIG_LIB_JPEG_TURBO)
+      message(WARNING "LIB_JPEG_TURBO is not enabled")
+    endif()
+    nuttx_add_dependencies(TARGET lvgl DEPENDS turbojpeg-static)
+  endif()
+
+  if(NOT ${CONFIG_LV_OPTLEVEL} STREQUAL "")
+    add_compile_options(${CONFIG_LV_OPTLEVEL})
+  endif()
+
+  set_property(
+    TARGET nuttx
+    APPEND
+    PROPERTY NUTTX_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_LIST_DIR}
+             ${CMAKE_CURRENT_LIST_DIR}/lvgl)
+
+  set_property(
+    TARGET nuttx
+    APPEND
+    PROPERTY NUTTX_COMPILE_OPTIONS -DLV_USE_DEV_VERSION=1)
+
 endif()
