@@ -10,6 +10,10 @@
 
 #if LV_USE_NUTTX
 
+#if LV_USE_NUTTX_LIBUV
+#include <uv.h>
+#endif
+
 #include <time.h>
 #include <nuttx/tls.h>
 #include <nuttx/clock.h>
@@ -21,6 +25,7 @@
 #include "lv_nuttx_profiler.h"
 
 #include "../../../lvgl.h"
+#include "lv_nuttx_libuv.h"
 
 /*********************
  *      DEFINES
@@ -177,7 +182,7 @@ void lv_nuttx_init(const lv_nuttx_dsc_t * dsc, lv_nuttx_result_t * result)
 void lv_nuttx_run(lv_nuttx_result_t * result)
 {
 #ifdef CONFIG_LV_USE_NUTTX_LIBUV
-    lv_nuttx_uv_loop(&ui_loop, result);
+    lv_nuttx_uv_loop(result);
 #else
     while(1) {
         uint32_t idle;
@@ -285,7 +290,7 @@ static void lv_nuttx_uv_loop(lv_nuttx_result_t * result)
 #endif
 
     data = lv_nuttx_uv_init(&uv_info);
-    uv_run(loop, UV_RUN_DEFAULT);
+    uv_run(&loop, UV_RUN_DEFAULT);
     lv_nuttx_uv_deinit(&data);
 }
 #endif
